@@ -6,25 +6,41 @@ interface BadgeProps {
 }
 
 const Badge: React.FC<BadgeProps> = ({ status, children }) => {
-    const getColors = () => {
+    const getStyles = () => {
         switch (status) {
-            case 'success': return { bg: 'rgba(46, 125, 50, 0.1)', color: 'var(--color-success)' };
-            case 'warning': return { bg: 'rgba(237, 108, 2, 0.1)', color: 'var(--color-warning)' };
-            case 'error': return { bg: 'rgba(211, 47, 47, 0.1)', color: 'var(--color-error)' };
-            case 'info': return { bg: 'rgba(2, 136, 209, 0.1)', color: 'var(--color-info)' };
+            case 'success': return {
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                color: 'var(--color-success)',
+                border: '1px solid rgba(16, 185, 129, 0.2)'
+            };
+            case 'warning': return {
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                color: 'var(--color-warning)',
+                border: '1px solid rgba(245, 158, 11, 0.2)'
+            };
+            case 'error': return {
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                color: 'var(--color-error)',
+                border: '1px solid rgba(239, 68, 68, 0.2)'
+            };
+            case 'info': return {
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                color: 'var(--color-info)',
+                border: '1px solid rgba(59, 130, 246, 0.2)'
+            };
         }
     };
 
-    const { bg, color } = getColors();
-
     return (
         <span style={{
-            backgroundColor: bg,
-            color: color,
-            padding: '0.25rem 0.5rem',
-            borderRadius: '4px',
+            ...getStyles(),
+            padding: '0.25rem 0.75rem',
+            borderRadius: 'var(--radius-full)',
             fontSize: '0.75rem',
-            fontWeight: 600
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            lineHeight: 1
         }}>
             {children}
         </span>

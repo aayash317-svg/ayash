@@ -1,5 +1,5 @@
 -- ========================================================
--- RESET AND SETUP EVERYTHING (UNIFIED PROGRAM)
+-- RESET AND SETUP EVERYTHING (UNIFIED PROGRAM - FIXED)
 -- !!! WARNING: THIS WILL DELETE ALL DATA IN PUBLIC TABLES !!!
 -- Run this script in the Supabase SQL Editor.
 -- ========================================================
@@ -48,27 +48,8 @@ CREATE TABLE public.student_grades (
 );
 ALTER TABLE public.student_grades ENABLE ROW LEVEL SECURITY;
 
--- 3. AUTHENTICATION TRIGGERS (The "Magic" for Sign Up)
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER
-SECURITY DEFINER
-AS $$
-BEGIN
-  INSERT INTO public.profiles (id, email, full_name, role)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', 'New Student'),
-    COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'student')
-  )
-  ON CONFLICT (id) DO NOTHING;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+-- 3. Removed Auth Triggers (Caused "Database Error" on SignUp)
+-- The Frontend (StudentLogin.tsx) will handle profile creation safely.
 
 -- 4. RLS POLICIES (Fixes "Permission Denied")
 CREATE POLICY "Public Read Profiles" ON public.profiles FOR SELECT USING (true);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Calendar, ArrowRight, ShieldCheck } from 'lucide-react';
+import { BookOpen, Calendar, ArrowRight } from 'lucide-react';
 
 const Landing: React.FC = () => {
     const navigate = useNavigate();
@@ -103,23 +103,7 @@ const Landing: React.FC = () => {
                         <h3 className="text-h3" style={{ marginBottom: '0.75rem', fontSize: '1.25rem' }}>Schedule Optimization</h3>
                         <p className="text-muted">AI-powered scheduling to build the perfect timetable around your preferences.</p>
                     </div>
-                    <div className="card" style={{ borderTop: '4px solid var(--accent-rose)' }}>
-                        <div style={{
-                            width: '3rem',
-                            height: '3rem',
-                            backgroundColor: 'var(--gray-50)',
-                            color: 'var(--accent-rose)',
-                            borderRadius: 'var(--radius-lg)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginBottom: '1.5rem'
-                        }}>
-                            <ShieldCheck size={24} />
-                        </div>
-                        <h3 className="text-h3" style={{ marginBottom: '0.75rem', fontSize: '1.25rem' }}>Secure & Private</h3>
-                        <p className="text-muted">Enterprise-grade security ensuring your academic records and personal data are protected.</p>
-                    </div>
+
                 </div>
             </section>
         </div>

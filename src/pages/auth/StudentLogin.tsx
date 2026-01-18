@@ -1,37 +1,89 @@
 import React, { useState } from 'react';
+import { Mail, ArrowRight, ShieldCheck, GraduationCap, User } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Mail, ArrowRight, ShieldCheck, GraduationCap } from 'lucide-react';
 
 const StudentLogin: React.FC = () => {
     const [email, setEmail] = useState('');
-    const [otp, setOtp] = useState('');
-    const [step, setStep] = useState<'email' | 'otp'>('email');
+    const [password, setPassword] = useState('');
+    const [fullName, setFullName] = useState('');
+    const [isSignUp, setIsSignUp] = useState(false);
     const [loading, setLoading] = useState(false);
-    const { sendOtp, verifyOtp } = useAuth();
+    const { loginWithPassword, signUp } = useAuth();
     const navigate = useNavigate();
 
-    const handleSendOtp = async (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        const { error } = await sendOtp(email);
-        setLoading(false);
-        if (error) {
-            alert(error.message);
-        } else {
-            setStep('otp');
-        }
-    };
 
-    const handleVerifyOtp = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        const { error } = await verifyOtp(email, otp);
-        setLoading(false);
-        if (error) {
-            alert('Invalid OTP or error verifying: ' + error.message);
+        if (isSignUp) {
+            // Sign Up Flow
+            const { data, error } = await signUp(email, password);
+            if (error) {
+                alert(error.message);
+                setLoading(false);
+            } else if (data.session?.user) {
+                // Auto-create profile if trigger is missing
+                const user = data.session.user;
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .insert([
+                        {
+                            id: user.id,
+                            email: email,
+                            full_name: fullName,
+                            role: 'student'
+                        }
+                    ]);
+
+                setLoading(false);
+                if (profileError) {
+                    // If duplicate key, it might mean trigger worked or previous attempt worked.
+                    // We ignore 'duplicate key' usually, but let's alert if other error.
+                    if (!profileError.message.includes('duplicate key')) {
+                        alert('Account created but profile setup failed: ' + profileError.message);
+                    } else {
+                        navigate('/student/dashboard');
+                    }
+                } else {
+                    navigate('/student/dashboard');
+                }
+            } else {
+                setLoading(false);
+                alert('Sign up successful! Please check your email to confirm if required, then sign in.');
+                setIsSignUp(false); // Switch back to login
+            }
         } else {
-            navigate('/student/dashboard');
+            // Login Flow
+
+            // 1. Check if email exists first (to give specific error)
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('email', email)
+                .single();
+
+            if (!profileData) {
+                setLoading(false);
+                alert('Email is not correct');
+                return;
+            }
+
+            // 2. Attempt Password Login
+            const { error } = await loginWithPassword(email, password);
+            setLoading(false);
+            if (error) {
+                if (error.message.includes('Database error saving new user')) {
+                    alert('Database Error setup issue.');
+                } else if (error.message.includes('Invalid login credentials')) {
+                    alert('Password is not correct');
+                } else {
+                    alert('Password is not correct'); // Default to password error if email existed
+                }
+            } else {
+                navigate('/student/dashboard');
+            }
         }
     };
 
@@ -52,71 +104,84 @@ const StudentLogin: React.FC = () => {
                     }}>
                         <GraduationCap size={28} />
                     </div>
-                    <h2 className="text-h2" style={{ marginBottom: '0.5rem' }}>Student Portal</h2>
-                    <p className="text-muted">Sign in to access your academic dashboard</p>
+                    <h2 className="text-h2" style={{ marginBottom: '0.5rem' }}>Student {isSignUp ? 'Registration' : 'Portal'}</h2>
+                    <p className="text-muted">{isSignUp ? 'Create your student account' : 'Sign in with your email and password'}</p>
                 </div>
 
-                {step === 'email' ? (
-                    <form onSubmit={handleSendOtp}>
+                <form onSubmit={handleLogin}>
+                    {isSignUp && (
                         <div className="form-group">
-                            <label className="form-label">Institutional Email</label>
+                            <label className="form-label">Full Name</label>
                             <div style={{ position: 'relative' }}>
-                                <Mail size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                                <User size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
                                 <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="student@university.edu"
+                                    type="text"
+                                    value={fullName}
+                                    onChange={(e) => setFullName(e.target.value)}
+                                    placeholder="John Doe"
                                     className="form-input"
                                     style={{ paddingLeft: '2.75rem' }}
-                                    required
+                                    required={isSignUp}
                                 />
                             </div>
                         </div>
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-                            {loading ? 'Sending...' : <>Send Secure Code <ArrowRight size={18} /></>}
-                        </button>
-                    </form>
-                ) : (
-                    <form onSubmit={handleVerifyOtp}>
-                        <div style={{
-                            backgroundColor: 'var(--primary-50)',
-                            padding: '1rem',
-                            borderRadius: 'var(--radius-md)',
-                            marginBottom: '1.5rem',
-                            fontSize: '0.875rem',
-                            color: 'var(--primary-800)',
-                            display: 'flex',
-                            gap: '0.5rem',
-                            alignItems: 'center'
-                        }}>
-                            <ShieldCheck size={16} />
-                            Code sent to <span style={{ fontWeight: 600 }}>{email}</span>
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Verification Code</label>
+                    )}
+
+                    <div className="form-group">
+                        <label className="form-label">Institutional Email</label>
+                        <div style={{ position: 'relative' }}>
+                            <Mail size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
                             <input
-                                type="text"
-                                value={otp}
-                                onChange={(e) => setOtp(e.target.value)}
-                                placeholder="1234"
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="student@university.edu"
                                 className="form-input"
-                                style={{ letterSpacing: '0.5em', textAlign: 'center', fontSize: '1.25rem' }}
-                                maxLength={4}
+                                style={{ paddingLeft: '2.75rem' }}
                                 required
                             />
                         </div>
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginBottom: '1rem' }} disabled={loading}>
-                            {loading ? 'Verifying...' : 'Verify & Login'}
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">Password</label>
+                        <div style={{ position: 'relative' }}>
+                            <ShieldCheck size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Enter your password"
+                                className="form-input"
+                                style={{ paddingLeft: '2.75rem' }}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
+                        {loading ? (isSignUp ? 'Creating Account...' : 'Signing in...') : <>{isSignUp ? 'Create Account' : 'Sign In'} <ArrowRight size={18} /></>}
+                    </button>
+
+                    <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+                        <button
+                            type="button"
+                            onClick={() => setIsSignUp(!isSignUp)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--primary-600)',
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                                fontSize: '0.875rem'
+                            }}
+                        >
+                            {isSignUp ? 'Already have an account? Sign In' : 'Don\'t have an account? Sign Up'}
                         </button>
-                        <button type="button" className="btn btn-outline" onClick={() => setStep('email')} style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-                            Go Back
-                        </button>
-                    </form>
-                )}
+                    </div>
+                </form>
             </div>
         </div>
     );
 };
-
 export default StudentLogin;

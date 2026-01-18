@@ -13,6 +13,8 @@ interface AuthContextType {
     isAuthenticated: boolean;
     sendOtp: (email: string) => Promise<{ error: any }>;
     verifyOtp: (email: string, token: string) => Promise<{ data: { session: Session | null; user: User | null }, error: any }>;
+    loginWithPassword: (email: string, password: string) => Promise<{ data: { session: Session | null; user: User | null }, error: any }>;
+    signUp: (email: string, password: string) => Promise<{ data: { session: Session | null; user: User | null }, error: any }>;
     logout: () => Promise<void>;
 }
 
@@ -94,6 +96,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUserRole(null);
     };
 
+    const loginWithPassword = async (email: string, password: string) => {
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
+
+        if (data.user) {
+            await fetchProfile(data.user.id);
+        }
+
+        return { data, error };
+    };
+
+    const signUp = async (email: string, password: string) => {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+        });
+
+        // If auto-confirm is on, we might get a session immediately.
+        if (data.session) {
+            setUser(data.session.user);
+            await fetchProfile(data.session.user.id);
+        }
+
+        return { data, error };
+    };
+
     return (
         <AuthContext.Provider value={{
             user,
@@ -102,6 +132,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             isAuthenticated: !!user,
             sendOtp,
             verifyOtp,
+            loginWithPassword,
+            signUp,
             logout
         }}>
             {!loading && children}

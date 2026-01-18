@@ -6,44 +6,90 @@ import Card from '../../components/Card';
 import Badge from '../../components/Badge';
 import { BookOpen, Calendar, MessageSquare, ArrowRight, TrendingUp, Clock } from 'lucide-react';
 
+interface GradeEntry {
+    grade: string;
+    semester: number;
+    course_code: string;
+    courses: {
+        credits: number;
+    };
+}
+
 const StudentDashboard: React.FC = () => {
     const { user, profile } = useAuth();
     const navigate = useNavigate();
-    const [studentData, setStudentData] = useState<any>(null);
-    const [enrolledCredits, setEnrolledCredits] = useState(0);
+    const [cgpa, setCgpa] = useState<string>('0.00');
+    const [creditsCompleted, setCreditsCompleted] = useState<number>(0);
+    const [creditsRequired] = useState<number>(120); // Default or fetch from somewhere
+    const [enrolledCredits, setEnrolledCredits] = useState<number>(0);
+    const [currentSemester, setCurrentSemester] = useState<number>(1);
     const [loading, setLoading] = useState(true);
+
+    const calculateGpa = (grade: string): number => {
+        const gradeMap: { [key: string]: number } = {
+            'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+            'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+            'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+            'D+': 1.3, 'D': 1.0, 'F': 0.0
+        };
+        return gradeMap[grade] || 0.0;
+    };
 
     useEffect(() => {
         if (!user) return;
 
         const fetchData = async () => {
             try {
-                // Fetch student details
-                const { data: student, error: studentError } = await supabase
-                    .from('students')
-                    .select('*')
-                    .eq('id', user.id)
+                // 1. Fetch Credits Completed from RPC
+                const { data: auditData, error: auditError } = await supabase
+                    .rpc('get_degree_audit', { student_uid: user.id })
                     .single();
 
-                if (studentError && studentError.code !== 'PGRST116') {
-                    console.error('Error fetching student data:', studentError);
-                } else if (student) {
-                    setStudentData(student);
-
-                    // Fetch enrolled credits for current semester
-                    if (student.current_semester) {
-                        const { data: enrollments, error: enrollError } = await supabase
-                            .from('enrollments')
-                            .select('course_code, courses(credits)')
-                            .eq('student_id', user.id)
-                            .eq('semester', student.current_semester);
-
-                        if (!enrollError && enrollments) {
-                            const total = enrollments.reduce((sum: number, item: any) => sum + (item.courses?.credits || 0), 0);
-                            setEnrolledCredits(total);
-                        }
-                    }
+                if (!auditError && auditData) {
+                    setCreditsCompleted((auditData as any).credits_completed || 0);
                 }
+
+                // 2. Fetch All Grades to calculate CGPA and find current semester
+                const { data: gradesData, error: gradesError } = await supabase
+                    .from('student_grades')
+                    .select('grade, semester, course_code, courses(credits)')
+                    .eq('student_id', user.id);
+
+                if (!gradesError && gradesData) {
+                    const grades = gradesData as unknown as GradeEntry[];
+
+                    // Logic to find current semester: Max semester where grade is NOT null (or maybe null implies current?)
+                    // For now, let's assume valid grades means past/current. We'll take the max semester found.
+                    const maxSemester = grades.reduce((max, curr) => Math.max(max, curr.semester), 1);
+                    setCurrentSemester(maxSemester);
+
+                    // Calculate CGPA
+                    let totalPoints = 0;
+                    let totalGradedCredits = 0;
+
+                    grades.forEach(g => {
+                        if (g.grade) {
+                            const points = calculateGpa(g.grade);
+                            const credits = g.courses?.credits || 0;
+                            totalPoints += points * credits;
+                            totalGradedCredits += credits;
+                        }
+                    });
+
+                    if (totalGradedCredits > 0) {
+                        setCgpa((totalPoints / totalGradedCredits).toFixed(2));
+                    }
+
+                    // Enrolled Credits (For "This Sem") works if we interpret "No Grade" or "Max Semester" as current.
+                    // Let's assume courses in maxSemester are "current" regardless of grade for now, or refine logic.
+                    // Actually, let's sum credits for the maxSemester found.
+                    const currentSemCredits = grades
+                        .filter(g => g.semester === maxSemester)
+                        .reduce((sum, g) => sum + (g.courses?.credits || 0), 0);
+
+                    setEnrolledCredits(currentSemCredits);
+                }
+
             } catch (error) {
                 console.error('Error loading dashboard:', error);
             } finally {
@@ -64,18 +110,20 @@ const StudentDashboard: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '3rem' }}>
                 <div>
                     <h1 className="text-h1" style={{ marginBottom: '0.5rem' }}>Dashboard</h1>
-                    <p style={{ color: 'var(--color-text-muted)', fontSize: '1.125rem' }}>Welcome back, <span style={{ color: 'var(--gray-900)', fontWeight: 600 }}>{profile?.full_name || user?.email}</span></p>
+                    <p style={{ color: 'var(--color-text-muted)', fontSize: '1.125rem' }}>
+                        Welcome back, <span style={{ color: 'var(--gray-900)', fontWeight: 600 }}>{profile?.full_name || user?.email}</span>
+                    </p>
                 </div>
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: 'var(--color-surface)', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>Academic Status</span>
-                            <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>{studentData?.academic_standing || 'N/A'}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>Student ID</span>
+                            <span style={{ fontWeight: 600, color: 'var(--color-primary)' }}>{user?.email?.split('@')[0] || 'N/A'}</span>
                         </div>
                         <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--color-border)' }}></div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>Semester</span>
-                            <span style={{ fontWeight: 600 }}>{studentData?.current_semester || 'N/A'}</span>
+                            <span style={{ fontWeight: 600 }}>{currentSemester}</span>
                         </div>
                     </div>
                 </div>
@@ -88,11 +136,10 @@ const StudentDashboard: React.FC = () => {
                         <div style={{ padding: '0.5rem', backgroundColor: 'var(--primary-50)', borderRadius: 'var(--radius-md)', color: 'var(--color-primary)' }}>
                             <TrendingUp size={24} />
                         </div>
-                        {/* Mock trend for now */}
-                        <Badge status="success">+2.5%</Badge>
+                        <Badge status="success">Good Standing</Badge>
                     </div>
                     <div style={{ marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--gray-900)' }}>{studentData?.cgpa || '0.00'}</span>
+                        <span style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--gray-900)' }}>{cgpa}</span>
                     </div>
                     <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Current CGPA</p>
                 </Card>
@@ -105,11 +152,11 @@ const StudentDashboard: React.FC = () => {
                         <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gray-500)' }}>Total</span>
                     </div>
                     <div style={{ marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--gray-900)' }}>{studentData?.credits_earned || 0}</span>
-                        <span style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>/{studentData?.credits_required || 120}</span>
+                        <span style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--gray-900)' }}>{creditsCompleted}</span>
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>/{creditsRequired}</span>
                     </div>
                     <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--gray-100)', borderRadius: '3px', marginTop: '0.5rem' }}>
-                        <div style={{ width: `${Math.min(((studentData?.credits_earned || 0) / (studentData?.credits_required || 120)) * 100, 100)}%`, height: '100%', backgroundColor: 'var(--accent-indigo)', borderRadius: '3px' }}></div>
+                        <div style={{ width: `${Math.min((creditsCompleted / creditsRequired) * 100, 100)}%`, height: '100%', backgroundColor: 'var(--accent-indigo)', borderRadius: '3px' }}></div>
                     </div>
                     <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '0.5rem' }}>Credits Completed</p>
                 </Card>
@@ -119,7 +166,7 @@ const StudentDashboard: React.FC = () => {
                         <div style={{ padding: '0.5rem', backgroundColor: 'var(--primary-50)', borderRadius: 'var(--radius-md)', color: 'var(--accent-teal)' }}>
                             <Clock size={24} />
                         </div>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gray-500)' }}>This Sem</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gray-500)' }}>Sem {currentSemester}</span>
                     </div>
                     <div style={{ marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--gray-900)' }}>{enrolledCredits}</span>

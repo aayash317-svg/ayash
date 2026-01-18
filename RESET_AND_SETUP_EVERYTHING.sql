@@ -1,7 +1,7 @@
 -- ========================================================
--- RESET AND SETUP EVERYTHING
+-- RESET AND SETUP EVERYTHING (UNIFIED PROGRAM)
 -- !!! WARNING: THIS WILL DELETE ALL DATA IN PUBLIC TABLES !!!
--- Run this script in the Supabase SQL Editor to fix ALL issues.
+-- Run this script in the Supabase SQL Editor.
 -- ========================================================
 
 -- 1. DESTRUCTIVE RESET (Clean Slate)
@@ -61,7 +61,7 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'full_name', 'New Student'),
     COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'student')
   )
-  ON CONFLICT (id) DO NOTHING; -- Safe if inserted manually
+  ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -70,17 +70,11 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 4. RLS POLICIES (Fixes "Permission Denied" errors)
-
--- Profiles: Public Read (for login checks), Self Insert/Update
+-- 4. RLS POLICIES (Fixes "Permission Denied")
 CREATE POLICY "Public Read Profiles" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Self Insert Profiles" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "Self Update Profiles" ON public.profiles FOR UPDATE USING (auth.uid() = id);
-
--- Courses: Public Read
 CREATE POLICY "Public Read Courses" ON public.courses FOR SELECT USING (true);
-
--- Grades: Student View Own, Staff View All
 CREATE POLICY "Student View Own Grades" ON public.student_grades FOR SELECT USING (auth.uid() = student_id);
 CREATE POLICY "Staff Manage Grades" ON public.student_grades FOR ALL USING (
     EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'staff')
@@ -102,31 +96,42 @@ BEGIN
 END;
 $$;
 
--- 6. SEED DATA (Courses)
+-- 6. SEED DATA (Courses - Including your specific subjects)
 INSERT INTO public.courses (course_code, course_name, credits, semester) VALUES
 ('CS101', 'Intro to CS', 4, 1),
 ('MA101', 'Calculus I', 4, 1),
 ('PH101', 'Physics I', 4, 1),
 ('EN101', 'English Composition', 3, 1),
 ('CS102', 'Data Structures', 4, 2),
-('MA102', 'Calculus II', 4, 2)
+('MA102', 'Calculus II', 4, 2),
+-- Your Specific Subjects:
+('U24ECB21', 'Subject 1', 4, 1),
+('U24ECB22', 'Subject 2', 4, 1)
 ON CONFLICT (course_code) DO NOTHING;
 
--- 7. SETUP SPECIFIC USER (If they exist in Auth but lost profile)
+-- 7. SETUP SPECIFIC USER (aayash317@gmail.com)
+-- NOTE: This only works IF you have already Signed Not up!
 DO $$
 DECLARE
-  target_email text := 'aayas317@gmail.com';
+  target_email text := 'aayash317@gmail.com';
   user_record record;
 BEGIN
   SELECT * INTO user_record FROM auth.users WHERE email = target_email;
+  
   IF user_record.id IS NOT NULL THEN
+    -- Ensure Profile
     INSERT INTO public.profiles (id, role, full_name, email)
-    VALUES (user_record.id, 'student', 'Aayas User', target_email)
-    ON CONFLICT (id) DO UPDATE SET role = 'student';
+    VALUES (user_record.id, 'student', 'Ayash M', target_email)
+    ON CONFLICT (id) DO UPDATE SET full_name = 'Ayash M', role = 'student';
     
+    -- Assign Grades for Specific Subjects
     INSERT INTO public.student_grades (student_id, course_code, grade, semester) VALUES
-    (user_record.id, 'CS101', 'A', 1),
-    (user_record.id, 'MA101', 'B+', 1)
-    ON CONFLICT DO NOTHING;
+    (user_record.id, 'U24ECB21', 'A+', 1),
+    (user_record.id, 'U24ECB22', 'A+', 1)
+    ON CONFLICT (student_id, course_code) DO UPDATE SET grade = EXCLUDED.grade;
+    
+    RAISE NOTICE 'SUCCESS: Grades assigned for %', target_email;
+  ELSE
+    RAISE WARNING 'User % not found. Please Sign Up in the app first, then run this script again to see grades.', target_email;
   END IF;
 END $$;

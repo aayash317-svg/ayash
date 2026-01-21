@@ -14,7 +14,7 @@ interface AuthContextType {
     sendOtp: (email: string) => Promise<{ error: any }>;
     verifyOtp: (email: string, token: string) => Promise<{ data: { session: Session | null; user: User | null }, error: any }>;
     loginWithPassword: (email: string, password: string) => Promise<{ data: { session: Session | null; user: User | null }, error: any }>;
-    signUp: (email: string, password: string) => Promise<{ data: { session: Session | null; user: User | null }, error: any }>;
+    signUp: (email: string, password: string, fullName: string, role: string) => Promise<{ data: { session: Session | null; user: User | null }, error: any }>;
     logout: () => Promise<void>;
 }
 
@@ -62,12 +62,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
             if (error) {
                 console.error('Error fetching profile:', error);
+                // Return null on error to indicate failure
+                return null;
             } else {
                 setProfile(data);
                 setUserRole(data?.role as UserRole);
+                return data;
             }
         } catch (err) {
             console.error('Unexpected error fetching profile:', err);
+            return null;
         } finally {
             setLoading(false);
         }
@@ -103,22 +107,64 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
 
         if (data.user) {
-            await fetchProfile(data.user.id);
+            const profileData = await fetchProfile(data.user.id);
+
+            // Self-healing: If profile doesn't exist but user does, create it from metadata
+            if (!profileData && data.user.user_metadata) {
+                console.log('Profile missing, attempting recovery...');
+                const { full_name, role } = data.user.user_metadata;
+
+                if (role) {
+                    const { error: recoveryError } = await supabase
+                        .from('profiles')
+                        .insert({
+                            id: data.user.id,
+                            email: email,
+                            full_name: full_name,
+                            role: role
+                        });
+
+                    if (!recoveryError) {
+                        await fetchProfile(data.user.id);
+                    } else {
+                        console.error('Profile recovery failed:', recoveryError);
+                    }
+                }
+            }
         }
 
         return { data, error };
     };
 
-    const signUp = async (email: string, password: string) => {
+    const signUp = async (email: string, password: string, fullName: string, role: string) => {
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
+            options: {
+                data: {
+                    full_name: fullName,
+                    role: role
+                }
+            }
         });
 
         // If auto-confirm is on, we might get a session immediately.
         if (data.session) {
             setUser(data.session.user);
-            await fetchProfile(data.session.user.id);
+
+            // Explicitly create profile
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .upsert({
+                    id: data.session.user.id,
+                    email: email,
+                    full_name: fullName,
+                    role: role
+                }, { onConflict: 'id' });
+
+            if (!profileError) {
+                await fetchProfile(data.session.user.id);
+            }
         }
 
         return { data, error };

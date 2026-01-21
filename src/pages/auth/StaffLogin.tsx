@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Mail, ArrowRight, ShieldCheck, Briefcase } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+
 
 const StaffLogin: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -15,26 +15,14 @@ const StaffLogin: React.FC = () => {
         e.preventDefault();
         setLoading(true);
 
-        // 1. Check if email exists first
-        const { data: profileData } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('email', email)
-            .single();
-
-        if (!profileData) {
-            setLoading(false);
-            alert('Email is not correct');
-            return;
-        }
-
         const { error } = await loginWithPassword(email, password);
         setLoading(false);
+
         if (error) {
             if (error.message.includes('Invalid login credentials')) {
-                alert('Password is not correct');
+                alert('Invalid email or password');
             } else {
-                alert('Password is not correct');
+                alert('Login failed: ' + error.message);
             }
         } else {
             navigate('/staff/dashboard');

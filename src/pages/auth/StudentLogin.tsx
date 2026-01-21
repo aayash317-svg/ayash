@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, ArrowRight, ShieldCheck, GraduationCap, User } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -19,67 +19,28 @@ const StudentLogin: React.FC = () => {
 
         if (isSignUp) {
             // Sign Up Flow
-            const { data, error } = await signUp(email, password);
+            const { data, error } = await signUp(email, password, fullName, 'student');
+
+            setLoading(false);
+
             if (error) {
                 alert(error.message);
-                setLoading(false);
             } else if (data.session?.user) {
-                // Auto-create profile if trigger is missing
-                const user = data.session.user;
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .insert([
-                        {
-                            id: user.id,
-                            email: email,
-                            full_name: fullName,
-                            role: 'student'
-                        }
-                    ]);
-
-                setLoading(false);
-                if (profileError) {
-                    // If duplicate key, it might mean trigger worked or previous attempt worked.
-                    // We ignore 'duplicate key' usually, but let's alert if other error.
-                    if (!profileError.message.includes('duplicate key')) {
-                        alert('Account created but profile setup failed: ' + profileError.message);
-                    } else {
-                        navigate('/student/dashboard');
-                    }
-                } else {
-                    navigate('/student/dashboard');
-                }
+                navigate('/student/dashboard');
             } else {
-                setLoading(false);
                 alert('Sign up successful! Please check your email to confirm if required, then sign in.');
                 setIsSignUp(false); // Switch back to login
             }
         } else {
             // Login Flow
-
-            // 1. Check if email exists first (to give specific error)
-            const { data: profileData } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('email', email)
-                .single();
-
-            if (!profileData) {
-                setLoading(false);
-                alert('Email is not correct');
-                return;
-            }
-
-            // 2. Attempt Password Login
             const { error } = await loginWithPassword(email, password);
             setLoading(false);
+
             if (error) {
-                if (error.message.includes('Database error saving new user')) {
-                    alert('Database Error setup issue.');
-                } else if (error.message.includes('Invalid login credentials')) {
-                    alert('Password is not correct');
+                if (error.message.includes('Invalid login credentials')) {
+                    alert('Invalid email or password');
                 } else {
-                    alert('Password is not correct'); // Default to password error if email existed
+                    alert('Login failed: ' + error.message);
                 }
             } else {
                 navigate('/student/dashboard');
